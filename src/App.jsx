@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import "./index.css";
-import "./collage.css";
+import "./Collage.css";
 
 /*
   Empty = same origin. In dev, Vite proxies /api to the
