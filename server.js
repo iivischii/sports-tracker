@@ -11,6 +11,10 @@ dotenv.config();
 
 const app = express();
 
+const PORT =
+  Number(process.env.PORT) ||
+  3001;
+
 app.use(cors());
 app.use(express.json());
 
@@ -23,6 +27,12 @@ const __filename =
 
 const __dirname =
   path.dirname(__filename);
+
+const distDir =
+  path.join(
+    __dirname,
+    "dist"
+  );
 
 const subscriptionsFile =
   path.join(
@@ -115,10 +125,96 @@ webPush.setVapidDetails(
    JSON FILE HELPERS
 ========================================================= */
 
+/*
+  STORAGE
+
+  If UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set
+  (production), subscriptions and reminders live in Upstash Redis,
+  so they survive restarts and redeploys on free hosting.
+  Otherwise the local .json files are used (your PC).
+*/
+
+const UPSTASH_URL =
+  process.env.UPSTASH_REDIS_REST_URL;
+
+const UPSTASH_TOKEN =
+  process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const useRedis =
+  Boolean(
+    UPSTASH_URL &&
+    UPSTASH_TOKEN
+  );
+
+async function redisCommand(
+  command
+) {
+  const response =
+    await fetch(
+      UPSTASH_URL,
+      {
+        method: "POST",
+
+        headers: {
+          Authorization:
+            `Bearer ${UPSTASH_TOKEN}`,
+
+          "Content-Type":
+            "application/json",
+        },
+
+        body:
+          JSON.stringify(
+            command
+          ),
+      }
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `Upstash ${response.status}`
+    );
+  }
+
+  const data =
+    await response.json();
+
+  if (data.error) {
+    throw new Error(
+      data.error
+    );
+  }
+
+  return data.result;
+}
+
+function storageKey(
+  file
+) {
+  return `bellingham:${path.basename(file)}`;
+}
+
 async function readJSON(
   file,
   fallback
 ) {
+  if (useRedis) {
+    /*
+      Errors are thrown on purpose: returning the fallback on a
+      failed read could make the next write wipe real data.
+    */
+
+    const raw =
+      await redisCommand([
+        "GET",
+        storageKey(file),
+      ]);
+
+    return raw
+      ? JSON.parse(raw)
+      : fallback;
+  }
+
   try {
     const raw =
       await fs.readFile(
@@ -138,6 +234,16 @@ async function writeJSON(
   file,
   data
 ) {
+  if (useRedis) {
+    await redisCommand([
+      "SET",
+      storageKey(file),
+      JSON.stringify(data),
+    ]);
+
+    return;
+  }
+
   await fs.writeFile(
     file,
     JSON.stringify(
@@ -894,6 +1000,64 @@ async function getEnglandResults() {
 
     events,
   };
+}
+
+/* =========================================================
+   5-MINUTE CACHE
+
+   The reminder timer runs every minute and the website polls too.
+   Without this, every call would hit ESPN several times.
+========================================================= */
+
+function withCache(
+  fn,
+  ttlMs
+) {
+  let value = null;
+  let storedAt = 0;
+  let pending = null;
+
+  return async () => {
+    if (
+      value &&
+      Date.now() - storedAt <
+        ttlMs
+    ) {
+      return value;
+    }
+
+    if (pending) {
+      return pending;
+    }
+
+    pending =
+      fn()
+        .then((result) => {
+          value = result;
+          storedAt = Date.now();
+          return result;
+        })
+        .finally(() => {
+          pending = null;
+        });
+
+    return pending;
+  };
+}
+
+const CACHE_MS =
+  5 * 60 * 1000;
+
+{
+  const rmaUp = getRealMadridUpcoming;
+  const engUp = getEnglandUpcoming;
+  const rmaRes = getRealMadridResults;
+  const engRes = getEnglandResults;
+
+  getRealMadridUpcoming = withCache(rmaUp, CACHE_MS);
+  getEnglandUpcoming = withCache(engUp, CACHE_MS);
+  getRealMadridResults = withCache(rmaRes, CACHE_MS);
+  getEnglandResults = withCache(engRes, CACHE_MS);
 }
 
 /* =========================================================
@@ -1667,6 +1831,9 @@ async function checkMatchReminders() {
         {}
       );
 
+    let remindersChanged =
+      false;
+
     const now =
       Date.now();
 
@@ -1754,15 +1921,20 @@ async function checkMatchReminders() {
       ] =
         new Date().toISOString();
 
+      remindersChanged =
+        true;
+
       console.log(
         `🔔 SENT: ${match.teamName} vs ${details.opponent}`
       );
     }
 
-    await writeJSON(
-      remindersFile,
-      reminders
-    );
+    if (remindersChanged) {
+      await writeJSON(
+        remindersFile,
+        reminders
+      );
+    }
   } catch (error) {
     console.error(
       "Reminder checker error:",
@@ -1783,18 +1955,53 @@ cron.schedule(
 );
 
 /* =========================================================
+   WEBSITE (the built frontend in /dist)
+========================================================= */
+
+app.use(
+  express.static(
+    distDir,
+    {
+      dotfiles:
+        "allow",
+    }
+  )
+);
+
+app.get(
+  "/{*splat}",
+  (req, res) => {
+    res.sendFile(
+      path.join(
+        distDir,
+        "index.html"
+      ),
+      (error) => {
+        if (error) {
+          res
+            .status(404)
+            .send(
+              "Not found"
+            );
+        }
+      }
+    );
+  }
+);
+
+/* =========================================================
    SERVER
 ========================================================= */
 
 app.listen(
-  3001,
+  PORT,
   () => {
     console.log(
       "🔥 THIS IS THE NEW BELLI GOAL SERVER 🔥"
     );
 
     console.log(
-      "BelliGoal backend running on http://localhost:3001"
+      `BelliGoal backend running on port ${PORT}${useRedis ? " (Upstash storage)" : " (local files)"}`
     );
 
     console.log(

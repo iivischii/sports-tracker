@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: belligoal
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/jude
+    envVars:
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: https://hopeful-hamster-225329.upstash.io
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: gQAAAAAAA3AxAAIgcDEwMjRkNDM1MTM3Yzc0MGI4YmMyZjdmNDgyZDA5NDk2NQ
