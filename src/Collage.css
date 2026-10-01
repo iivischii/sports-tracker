@@ -1,0 +1,367 @@
+@import url("https://fonts.googleapis.com/css2?family=Pinyon+Script&display=swap");
+
+/* =================================================
+   COLLAGE LOOK (desktop + mobile)
+   Loaded AFTER index.css. Delete the import in App.jsx
+   to go back to the old look.
+================================================= */
+
+:root {
+  --wine: #7d1535;
+  --wine-soft: #a8325a;
+  --gold: #e6b53f;
+  --paper: #f2d3de;
+}
+
+/* ---------- decorations (shared) ---------- */
+.collage {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.star {
+  position: absolute;
+  background: linear-gradient(135deg, #f7da7a, var(--gold));
+  clip-path: polygon(50% 0, 62% 36%, 100% 38%, 70% 60%, 80% 100%, 50% 76%, 20% 100%, 30% 60%, 0 38%, 38% 36%);
+  filter: drop-shadow(0 2px 2px rgba(125,21,53,.25));
+}
+
+.star.wine { background: var(--wine-soft); }
+
+.beads {
+  position: absolute;
+  left: 29%;
+  top: 12%;
+  display: flex;
+  gap: 3px;
+  transform: rotate(-16deg);
+}
+
+.beads span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #1d1015;
+  font-weight: 900;
+  font-size: 16px;
+  border-radius: 5px;
+  box-shadow: 0 3px 6px rgba(125,21,53,.25);
+}
+
+.beads span.gap {
+  background: transparent;
+  box-shadow: none;
+  width: 10px;
+}
+
+.stat-pill {
+  position: absolute;
+  display: flex;
+  gap: 26px;
+  padding: 14px 26px;
+  background: #fff;
+  border-radius: 28px;
+  box-shadow: 0 10px 24px rgba(125,21,53,.18);
+  color: #1d1015;
+}
+
+.stat-pill small {
+  display: block;
+  font-size: 11px;
+  color: #6f5560;
+  margin-bottom: 3px;
+}
+
+.stat-pill b {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.pill-left  { left: 4.5%; top: 68%; transform: rotate(-1deg); }
+.pill-right { right: 4.5%; top: 74%; transform: rotate(1deg); }
+
+.corner-note {
+  position: absolute;
+  bottom: 22px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  color: var(--wine);
+}
+
+.corner-note.left  { left: 34px; }
+.corner-note.right { right: 34px; }
+
+@media (min-width: 701px) {
+  /* ---------- flat dusty-pink paper + frame ---------- */
+  .app {
+    background:
+      radial-gradient(circle at 20% 18%, rgba(255,255,255,.55) 0, transparent 34%),
+      radial-gradient(circle at 85% 80%, rgba(168,50,90,.16) 0, transparent 38%),
+      var(--paper);
+    box-shadow: inset 0 0 0 9px rgba(150, 118, 136, .55);
+  }
+
+  .app::after {
+    background-image: radial-gradient(circle, rgba(125,21,53,.22) 1px, transparent 1.6px);
+    background-size: 14px 14px;
+    opacity: .22;
+  }
+
+  /* ---------- big script title ---------- */
+  .title-word {
+    font-family: "Pinyon Script", "Rasley", cursive;
+    font-size: 168px;
+    top: 52px;
+    color: var(--wine);
+    text-shadow: none;
+    letter-spacing: -1px;
+  }
+
+  .title-word:last-child::after {
+    content: ".";
+  }
+
+  /* ---------- Jude as a paper cut-out sticker ---------- */
+  .title-jude {
+    overflow: visible;
+
+    /* in front of the buttons so he overlaps them
+       (!important beats the inline z-index in App.jsx;
+       clicks still pass through because pointer-events is none) */
+    z-index: 15 !important;
+  }
+
+  .title-jude img {
+    transform: rotate(-1.5deg);
+    filter:
+      drop-shadow(5px 0 0 #fff)
+      drop-shadow(-5px 0 0 #fff)
+      drop-shadow(0 5px 0 #fff)
+      drop-shadow(0 -5px 0 #fff)
+      drop-shadow(0 20px 22px rgba(125, 21, 53, .30));
+  }
+
+  /* halftone dots printed over the figure only */
+  .title-jude::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 120%;
+    height: 120%;
+    transform: translateX(-50%) rotate(-1.5deg);
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(125,21,53,.5) 1.2px, transparent 1.9px);
+    background-size: 7px 7px;
+    mix-blend-mode: multiply;
+    opacity: .35;
+    -webkit-mask-image: url("/jude.png");
+    mask-image: url("/jude.png");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-position: bottom center;
+    mask-position: bottom center;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+  }
+
+  /* ---------- sticker buttons ---------- */
+  .crystal-button {
+    background: #fff;
+    color: var(--wine);
+    border: 2.5px solid var(--wine);
+    border-radius: 999px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: 6px 6px 0 var(--wine);
+    letter-spacing: .5px;
+  }
+
+  .crystal-button:hover {
+    background: #fff;
+    transform: translate(-3px, -3px) rotate(-1deg);
+    box-shadow: 9px 9px 0 var(--wine);
+  }
+
+  .crystal-button:active {
+    transform: translate(3px, 3px);
+    box-shadow: 2px 2px 0 var(--wine);
+  }
+
+  .game-button  { transform: rotate(-2deg); }
+  .stats-button { transform: rotate(2deg); }
+  .settings-button { transform: rotate(-1.5deg); }
+
+  .bell-button {
+    border: 2.5px solid var(--wine);
+    box-shadow: 4px 4px 0 var(--wine);
+    color: var(--wine);
+  }
+
+  .bell-button.notifications-on {
+    background: var(--wine);
+    color: #fff;
+  }
+}
+
+/* =================================================
+   MOBILE (same look, positions untouched)
+================================================= */
+
+@media (max-width: 700px) {
+  .app {
+    background:
+      radial-gradient(circle at 20% 14%, rgba(255,255,255,.55) 0, transparent 36%),
+      radial-gradient(circle at 85% 82%, rgba(168,50,90,.16) 0, transparent 40%),
+      var(--paper);
+    box-shadow: inset 0 0 0 5px rgba(150, 118, 136, .55);
+  }
+
+  .app::after {
+    background-image: radial-gradient(circle, rgba(125,21,53,.22) 1px, transparent 1.6px);
+    background-size: 12px 12px;
+    opacity: .2;
+  }
+
+  /* sticker tabs */
+  .crystal-button {
+    background: #fff;
+    color: var(--wine);
+    border: 2px solid var(--wine);
+    border-radius: 999px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: 3px 3px 0 var(--wine);
+  }
+
+  .crystal-button:hover {
+    background: #fff;
+    box-shadow: 3px 3px 0 var(--wine);
+  }
+
+  .crystal-button:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 var(--wine);
+  }
+
+  .bell-button {
+    border: 2px solid var(--wine);
+    background: #fff;
+    color: var(--wine);
+    box-shadow: 3px 3px 0 var(--wine);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .bell-button.notifications-on {
+    background: var(--wine);
+    color: #fff;
+  }
+
+  /* script title */
+  .title-word {
+    font-family: "Pinyon Script", "Rasley", cursive;
+    font-size: 80px;
+    color: var(--wine);
+    text-shadow: none;
+  }
+
+  .title-word:last-child::after {
+    content: ".";
+  }
+
+  /* Jude cut-out sticker */
+  .title-jude img {
+    filter:
+      drop-shadow(3px 0 0 #fff)
+      drop-shadow(-3px 0 0 #fff)
+      drop-shadow(0 3px 0 #fff)
+      drop-shadow(0 -3px 0 #fff)
+      drop-shadow(0 12px 16px rgba(125, 21, 53, .28));
+  }
+
+  .title-jude::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(125,21,53,.5) 1px, transparent 1.6px);
+    background-size: 6px 6px;
+    mix-blend-mode: multiply;
+    opacity: .3;
+    -webkit-mask-image: url("/jude-mobile.png");
+    mask-image: url("/jude-mobile.png");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-position: bottom center;
+    mask-position: bottom center;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+  }
+
+  /* decorations: keep clear of the top tab row */
+  .star:nth-of-type(1),
+  .star:nth-of-type(2),
+  .star:nth-of-type(7) {
+    display: none;
+  }
+
+  .beads {
+    left: 7%;
+    top: 112px;
+    gap: 2px;
+  }
+
+  .beads span {
+    width: 24px;
+    height: 24px;
+    font-size: 13px;
+  }
+
+  .beads span.gap {
+    width: 8px;
+  }
+
+  .pill-left {
+    left: 50%;
+    top: auto;
+    bottom: 44px;
+    gap: 16px;
+    padding: 10px 16px;
+    border-radius: 22px;
+    transform: translateX(-50%) rotate(-1deg);
+    white-space: nowrap;
+  }
+
+  .pill-right {
+    display: none;
+  }
+
+  .stat-pill small {
+    font-size: 10px;
+  }
+
+  .stat-pill b {
+    font-size: 14px;
+  }
+
+  .corner-note {
+    bottom: 14px;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  .corner-note.left  { left: 16px; }
+  .corner-note.right { right: 16px; }
+}
