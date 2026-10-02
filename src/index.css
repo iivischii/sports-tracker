@@ -422,15 +422,6 @@ body {
   color: white;
 }
 
-/* ================= MUSIC BUTTON =================
-   Same look as the bell, just shifted left so they
-   sit side by side instead of overlapping.
-*/
-
-.music-button {
-  right: calc(3.5% + 68px);
-}
-
 /* ================= NOTIFICATION DOT ================= */
 
 .notification-dot {
@@ -448,35 +439,6 @@ body {
 
   border: 2px solid white;
 }
-
-/* ================================================= */
-/* RISING INTRO                                      */
-/* ================================================= */
-
-/*
-  Everything tagged rise-item starts hidden/shifted down.
-  Once the "app" div gets "is-ready" (added a beat after
-  mount, from App.jsx), each item fades + rises into place,
-  staggered by rise-1..rise-4 so they don't all pop at once.
-*/
-
-.rise-item {
-  opacity: 0;
-  transform: translateY(28px);
-  transition:
-    opacity 0.6s ease,
-    transform 0.6s ease;
-}
-
-.app.is-ready .rise-item {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.app.is-ready .rise-1 { transition-delay: 0s; }
-.app.is-ready .rise-2 { transition-delay: 0.12s; }
-.app.is-ready .rise-3 { transition-delay: 0.22s; }
-.app.is-ready .rise-4 { transition-delay: 0.34s; }
 
 /* ================================================= */
 /* POPUP */
@@ -519,7 +481,7 @@ body {
   border-radius: 38px;
 
   background:
-    rgba(190, 105, 137, 0.93);
+    rgba(190, 105, 137, 0.82);
 
   color: #24151b;
 
@@ -2348,10 +2310,6 @@ body {
       none;
   }
 
-  .music-button {
-    right: calc(2% + 50px);
-  }
-
   .notification-dot {
     top:
       2px;
@@ -2439,7 +2397,7 @@ body {
       18px;
 
     background:
-      rgba(120, 78, 86, 0.93);
+      rgba(120, 78, 86, 0.78);
 
     color:
       #24151b;
