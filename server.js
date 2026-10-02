@@ -46,6 +46,12 @@ const remindersFile =
     "reminders.json"
   );
 
+const gameLinksFile =
+  path.join(
+    __dirname,
+    "game-links.json"
+  );
+
 /* =========================================================
    ESPN CONFIG
 ========================================================= */
@@ -1488,6 +1494,99 @@ app.get(
       ).json({
         error:
           "Failed to get Jude status",
+      });
+    }
+  }
+);
+
+/* =========================================================
+   GAME LINKS
+
+   Saved on the server (Redis in production, a local file in
+   dev) instead of only in the browser's localStorage, so the
+   same links show up no matter which device/app/browser opens
+   the site.
+========================================================= */
+
+app.get(
+  "/api/game-links",
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const links =
+        await readJSON(
+          gameLinksFile,
+          []
+        );
+
+      res.json({
+        links,
+      });
+    } catch (error) {
+      console.error(
+        "Game links read error:",
+        error
+      );
+
+      res.status(
+        500
+      ).json({
+        error:
+          "Failed to load game links",
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/game-links",
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const links =
+        req.body?.links;
+
+      if (
+        !Array.isArray(
+          links
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "links must be an array",
+          });
+      }
+
+      await writeJSON(
+        gameLinksFile,
+        links
+      );
+
+      console.log(
+        "🔗 GAME LINKS SAVED"
+      );
+
+      res.json({
+        success:
+          true,
+      });
+    } catch (error) {
+      console.error(
+        "Game links save error:",
+        error
+      );
+
+      res.status(
+        500
+      ).json({
+        error:
+          "Failed to save game links",
       });
     }
   }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Bell,
@@ -7,6 +7,8 @@ import {
   X,
   ExternalLink,
   Link,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
 import "./index.css";
@@ -151,6 +153,120 @@ function App() {
 
   const [editingLinks, setEditingLinks] =
     useState(gameLinks);
+
+  /*
+    RISING INTRO
+
+    The "app" div starts without the "is-ready" class, so
+    everything but the background is invisible/shifted down
+    (see index.css). After a short pause we add the class,
+    which CSS transitions turn into a staggered rise-and-fade.
+  */
+
+  const [isReady, setIsReady] =
+    useState(false);
+
+  useEffect(() => {
+    const timer =
+      setTimeout(() => {
+        setIsReady(true);
+      }, 350);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  /* =========================================================
+     BACKGROUND MUSIC
+
+     Starts OFF (mobile browsers block autoplay-with-sound
+     anyway, so there's no point trying). The button click
+     itself counts as the "user gesture" that unlocks audio.
+  ========================================================= */
+
+  const audioRef =
+    useRef(null);
+
+  const [musicOn, setMusicOn] =
+    useState(() => {
+      return (
+        localStorage.getItem(
+          "belliGoalMusic"
+        ) === "on"
+      );
+    });
+
+  useEffect(() => {
+    if (!audioRef.current) {
+      return;
+    }
+
+    if (musicOn) {
+      audioRef.current
+        .play()
+        .catch((error) => {
+          console.error(
+            "Music play blocked:",
+            error
+          );
+          setMusicOn(false);
+        });
+    } else {
+      audioRef.current.pause();
+    }
+
+    localStorage.setItem(
+      "belliGoalMusic",
+      musicOn ? "on" : "off"
+    );
+  }, [musicOn]);
+
+  const toggleMusic =
+    () => {
+      setMusicOn((current) => !current);
+    };
+
+  /*
+    Pull the real, server-saved links on open. localStorage
+    above just paints something instantly while this loads, so
+    there's no blank flash.
+  */
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response =
+          await fetch(
+            `${API_BASE}/api/game-links`
+          );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data =
+          await response.json();
+
+        if (
+          Array.isArray(data.links) &&
+          data.links.length > 0
+        ) {
+          setGameLinks(data.links);
+          setEditingLinks(data.links);
+
+          localStorage.setItem(
+            "belliGoalLinks",
+            JSON.stringify(data.links)
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Could not load game links from server:",
+          error
+        );
+        // Keep whatever localStorage/defaults already loaded.
+      }
+    })();
+  }, []);
 
   /* =========================================================
      LOAD UPCOMING
@@ -1251,7 +1367,7 @@ function App() {
     };
 
   const saveLinks =
-    () => {
+    async () => {
       setGameLinks(
         editingLinks
       );
@@ -1263,9 +1379,41 @@ function App() {
         )
       );
 
-      alert(
-        "✅ Game links saved."
-      );
+      try {
+        const response =
+          await fetch(
+            `${API_BASE}/api/game-links`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                links: editingLinks,
+              }),
+            }
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            "Server save failed"
+          );
+        }
+
+        alert(
+          "✅ Game links saved."
+        );
+      } catch (error) {
+        console.error(
+          "Game links save error:",
+          error
+        );
+
+        alert(
+          "⚠️ Saved on this device, but couldn't reach the server — it may not sync to other devices yet."
+        );
+      }
     };
 
   const openLink =
@@ -1377,13 +1525,13 @@ function App() {
   ========================================================= */
 
   return (
-    <div className="app">
+    <div className={`app ${isReady ? "is-ready" : ""}`}>
 
       {/* =====================================================
           COLLAGE DECORATIONS (desktop only, see collage.css)
       ===================================================== */}
 
-      <div className="collage" aria-hidden="true">
+      <div className="collage rise-item rise-1" aria-hidden="true">
         <span className="star" style={{ width: "26px", height: "20px", left: "5%", top: "7%" }} />
         <span className="star" style={{ width: "18px", height: "18px", left: "8.5%", top: "4%" }} />
         <span className="star" style={{ width: "22px", height: "22px", left: "3%", top: "16%" }} />
@@ -1452,7 +1600,7 @@ function App() {
           TITLE
       ===================================================== */}
 
-      <header className="title">
+      <header className="title rise-item rise-2">
         <span className="title-word">
           Belli
         </span>
@@ -1467,7 +1615,7 @@ function App() {
       ===================================================== */}
 
       <div
-        className="title-jude"
+        className="title-jude rise-item rise-3"
         style={{
           pointerEvents:
             "none",
@@ -1494,7 +1642,7 @@ function App() {
       ===================================================== */}
 
       <button
-        className="crystal-button game-button"
+        className="crystal-button game-button rise-item rise-4"
         style={{
           zIndex:
             20,
@@ -1523,7 +1671,7 @@ function App() {
       ===================================================== */}
 
       <button
-        className="crystal-button stats-button"
+        className="crystal-button stats-button rise-item rise-4"
         style={{
           zIndex:
             20,
@@ -1544,7 +1692,7 @@ function App() {
       ===================================================== */}
 
       <button
-        className="crystal-button settings-button"
+        className="crystal-button settings-button rise-item rise-4"
         style={{
           zIndex:
             20,
@@ -1589,6 +1737,36 @@ function App() {
 
         {notificationsOn && (
           <span className="notification-dot"></span>
+        )}
+      </button>
+
+      {/* =====================================================
+          BACKGROUND MUSIC
+      ===================================================== */}
+
+      <audio
+        ref={audioRef}
+        src="/moreno.mp3"
+        loop
+        preload="none"
+      />
+
+      <button
+        className={`bell-button music-button ${
+          musicOn ? "notifications-on" : ""
+        }`}
+        style={{
+          zIndex: 25,
+        }}
+        onClick={toggleMusic}
+        aria-label={
+          musicOn ? "Turn music off" : "Turn music on"
+        }
+      >
+        {musicOn ? (
+          <Volume2 size={24} />
+        ) : (
+          <VolumeX size={24} />
         )}
       </button>
 
