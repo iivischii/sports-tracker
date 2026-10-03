@@ -482,7 +482,17 @@ body {
   .app.is-ready .stats-button.rise-item { transform: rotate(2deg); }
   .app.is-ready .settings-button.rise-item { transform: rotate(-1.5deg); }
 }
-\n/* Keep the original centering transforms on the title and Jude.\n   The rising intro otherwise replaces translateX(...) with translateY(0). */\n.app.is-ready .title.rise-item {\n  transform: translateX(-50%);\n}\n\n.app.is-ready .title-jude.rise-item {\n  transform: translateX(-60%);\n}\n\n
+
+/* Keep the original centering transforms after the rise animation. */
+.app.is-ready .title.rise-item {
+  transform: translateX(-50%);
+}
+
+.app.is-ready .title-jude.rise-item {
+  transform: translateX(-60%);
+}
+
+
 /* ================================================= */
 /* POPUP */
 /* ================================================= */
