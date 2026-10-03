@@ -2933,3 +2933,12 @@ body {
       13px;
   }
 }
+/* Mobile: keep Jude centered after the intro rise animation.
+   The desktop .app.is-ready rule has higher specificity than
+   .title-jude inside the mobile media query, so it otherwise
+   shifts the image to the left. */
+@media (max-width: 700px) {
+  .app.is-ready .title-jude.rise-item {
+    transform: translateX(-50%);
+  }
+}
