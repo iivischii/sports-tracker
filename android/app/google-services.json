@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "165038320213",
+    "project_id": "bellingham-2d021",
+    "storage_bucket": "bellingham-2d021.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:165038320213:android:807323c5d61ef3f36982dc",
+        "android_client_info": {
+          "package_name": "com.belligoal.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCHK4xYeTcEdup0f3oDdxublQyEGIIpSDk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
