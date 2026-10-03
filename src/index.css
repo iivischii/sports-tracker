@@ -279,7 +279,6 @@ body {
 
   display: block;
 }
-
 /* ================= MAIN BUTTONS ================= */
 
 .crystal-button {
@@ -2154,7 +2153,7 @@ body {
 
   /* ================================================= */
 
-  .title {
+    .title {
     top:
       180px;
 
@@ -2166,7 +2165,6 @@ body {
 
     height:
       75px;
-
     transform:
       translateX(-50%);
 
@@ -2218,14 +2216,13 @@ body {
     left:
       auto;
   }
-
   /* ================================================= */
 
   /* MOBILE JUDE */
 
   /* ================================================= */
 
-  .title-jude {
+   .title-jude {
     position:
       absolute;
 
@@ -2266,8 +2263,7 @@ body {
   .title-jude picture {
     width:
       140%;
-
-    height:
+         height:
       100%;
 
     display:
