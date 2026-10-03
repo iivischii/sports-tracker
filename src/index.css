@@ -422,6 +422,15 @@ body {
   color: white;
 }
 
+/* ================= MUSIC BUTTON =================
+   Same look as the bell, just shifted left so they
+   sit side by side instead of overlapping.
+*/
+
+.music-button {
+  right: calc(3.5% + 68px);
+}
+
 /* ================= NOTIFICATION DOT ================= */
 
 .notification-dot {
@@ -438,6 +447,41 @@ body {
   background: #ff4f6d;
 
   border: 2px solid white;
+}
+
+/* ================================================= */
+/* RISING INTRO */
+/* ================================================= */
+
+.rise-item {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
+}
+
+.app.is-ready .rise-item {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.app.is-ready .rise-1 { transition-delay: 0s; }
+.app.is-ready .rise-2 { transition-delay: 0.12s; }
+.app.is-ready .rise-3 { transition-delay: 0.22s; }
+.app.is-ready .rise-4 { transition-delay: 0.34s; }
+
+/*
+  The 3 nav buttons have their own tilt (set in Collage.css,
+  desktop only). The generic rise-item rule above would wipe
+  that tilt out with translateY(0) once ready, so these
+  override it back to each button's intended rotation.
+*/
+
+@media (min-width: 701px) {
+  .app.is-ready .game-button.rise-item { transform: rotate(-2deg); }
+  .app.is-ready .stats-button.rise-item { transform: rotate(2deg); }
+  .app.is-ready .settings-button.rise-item { transform: rotate(-1.5deg); }
 }
 
 /* ================================================= */
@@ -481,7 +525,7 @@ body {
   border-radius: 38px;
 
   background:
-    rgba(190, 105, 137, 0.82);
+    rgba(190, 105, 137, 0.93);
 
   color: #24151b;
 
@@ -2264,10 +2308,13 @@ body {
       absolute;
 
     top:
-      12px;
+      auto;
+
+    bottom:
+      44px;
 
     right:
-      2%;
+      12px;
 
     width:
       42px;
@@ -2308,6 +2355,12 @@ body {
 
     transform:
       none;
+  }
+
+  .music-button {
+    top: auto;
+    bottom: 44px;
+    right: 62px;
   }
 
   .notification-dot {
@@ -2397,7 +2450,7 @@ body {
       18px;
 
     background:
-      rgba(120, 78, 86, 0.78);
+      rgba(120, 78, 86, 0.93);
 
     color:
       #24151b;

@@ -52,6 +52,12 @@ const gameLinksFile =
     "game-links.json"
   );
 
+const liveScoresFile =
+  path.join(
+    __dirname,
+    "live-scores.json"
+  );
+
 /* =========================================================
    ESPN CONFIG
 ========================================================= */
@@ -2043,6 +2049,216 @@ async function checkMatchReminders() {
 }
 
 /* =========================================================
+   LIVE GOAL NOTIFICATIONS
+
+   Every minute, checks if Real Madrid or England currently
+   have a match "in progress" on ESPN. If the score has moved
+   since the last check, that means a goal happened -> push
+   notification. The very first time a live match is seen,
+   the score is just saved as a baseline (no notification),
+   so kickoff itself doesn't trigger a false "goal" alert.
+========================================================= */
+
+const LIVE_TRACKED_TEAMS = [
+  { id: "86", name: "Real Madrid" },
+  { id: "448", name: "England" },
+];
+
+async function checkLiveGoals() {
+  try {
+    const liveScores =
+      await readJSON(
+        liveScoresFile,
+        {}
+      );
+
+    let scoresChanged =
+      false;
+
+    const seenMatchIds =
+      new Set();
+
+    for (
+      const trackedTeam of
+        LIVE_TRACKED_TEAMS
+    ) {
+      let events = [];
+
+      try {
+        events =
+          await getScoreboardFallback(
+            trackedTeam.id,
+            0,
+            1
+          );
+      } catch (error) {
+        console.error(
+          `Live score fetch failed for ${trackedTeam.name}:`,
+          error
+        );
+        continue;
+      }
+
+      for (
+        const event of events
+      ) {
+        const competition =
+          event?.competitions?.[0];
+
+        const state =
+          competition?.status
+            ?.type?.state;
+
+        // Only care about matches currently being played.
+        if (state !== "in") {
+          continue;
+        }
+
+        const matchId =
+          String(event?.id);
+
+        seenMatchIds.add(
+          matchId
+        );
+
+        const competitors =
+          competition
+            ?.competitors || [];
+
+        const home =
+          competitors.find(
+            (c) =>
+              c?.homeAway ===
+              "home"
+          );
+
+        const away =
+          competitors.find(
+            (c) =>
+              c?.homeAway ===
+              "away"
+          );
+
+        if (!home || !away) {
+          continue;
+        }
+
+        const homeName =
+          home?.team
+            ?.shortDisplayName ||
+          home?.team
+            ?.displayName ||
+          "Home";
+
+        const awayName =
+          away?.team
+            ?.shortDisplayName ||
+          away?.team
+            ?.displayName ||
+          "Away";
+
+        const homeScore =
+          Number(
+            home?.score ?? 0
+          );
+
+        const awayScore =
+          Number(
+            away?.score ?? 0
+          );
+
+        const scoreString =
+          `${homeScore}-${awayScore}`;
+
+        const previous =
+          liveScores[matchId];
+
+        if (
+          previous === undefined
+        ) {
+          // First time seeing this match live - just save
+          // the baseline, don't notify.
+          liveScores[matchId] = {
+            score: scoreString,
+            homeName,
+            awayName,
+          };
+
+          scoresChanged = true;
+          continue;
+        }
+
+        if (
+          previous.score !==
+          scoreString
+        ) {
+          await sendPushNotification({
+            title:
+              "⚽ GOAL!",
+
+            body:
+              `${homeName} ${homeScore}-${awayScore} ${awayName}`,
+
+            tag:
+              `live-${matchId}`,
+
+            url:
+              "/",
+          });
+
+          liveScores[matchId] = {
+            score: scoreString,
+            homeName,
+            awayName,
+          };
+
+          scoresChanged = true;
+
+          console.log(
+            `⚽ GOAL PUSHED: ${homeName} ${homeScore}-${awayScore} ${awayName}`
+          );
+        }
+      }
+    }
+
+    /*
+      Clean up matches that are no longer live (finished,
+      postponed, or just not showing up anymore) so this file
+      doesn't grow forever.
+    */
+
+    for (
+      const storedId of
+        Object.keys(liveScores)
+    ) {
+      if (
+        !seenMatchIds.has(
+          storedId
+        )
+      ) {
+        delete liveScores[
+          storedId
+        ];
+
+        scoresChanged = true;
+      }
+    }
+
+    if (scoresChanged) {
+      await writeJSON(
+        liveScoresFile,
+        liveScores
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Live goal checker error:",
+      error
+    );
+  }
+}
+
+/* =========================================================
    CRON
 ========================================================= */
 
@@ -2050,6 +2266,7 @@ cron.schedule(
   "* * * * *",
   () => {
     checkMatchReminders();
+    checkLiveGoals();
   }
 );
 
