@@ -1505,6 +1505,190 @@ app.get(
   }
 );
 
+app.get(
+  "/api/bellingham/stats/:eventId",
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        eventId,
+      } = req.params;
+
+      if (!/^\d+$/.test(eventId)) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "Invalid event ID",
+          });
+      }
+
+      const summary =
+        await fetchJSON(
+          `${ESPN.summary}?event=` +
+            encodeURIComponent(eventId)
+        );
+
+      const jude =
+        extractRosterPlayers(summary).find(
+          (player) => {
+            const id =
+              player?.athlete?.id ??
+              player?.player?.id ??
+              "";
+
+            const name =
+              player?.athlete?.displayName ??
+              player?.player?.displayName ??
+              "";
+
+            return (
+              String(id) === JUDE_ESPN_ID ||
+              name.toLowerCase() === "jude bellingham"
+            );
+          }
+        );
+
+      const playerStats =
+        (jude?.stats ?? []).map((stat) => ({
+          name:
+            stat.displayName ?? stat.name,
+          value:
+            stat.displayValue ?? String(stat.value ?? ""),
+          description:
+            stat.description ?? "",
+        }));
+
+      const playerEvents =
+        (jude?.plays ?? []).map((play) => ({
+          time:
+            play.clock?.displayValue ?? "",
+          yellowCard:
+            Boolean(play.yellowCard),
+          redCard:
+            Boolean(play.redCard),
+          scoringPlay:
+            Boolean(play.scoringPlay),
+          substitution:
+            Boolean(play.substitution),
+        }));
+
+      const teamStats =
+        (summary?.boxscore?.teams ?? []).map((team) => ({
+          name:
+            team.team?.displayName ?? "Team",
+          stats:
+            (team.statistics ?? []).map((stat) => ({
+              name:
+                stat.label ?? stat.name,
+              value:
+                stat.displayValue ?? "-",
+            })),
+        }));
+
+      const matchEvents =
+        (summary?.keyEvents ?? [])
+          .filter((event) =>
+            /goal|yellow card|red card|substitution|penalty/i.test(
+              event?.text ?? ""
+            )
+          )
+          .map((event) => ({
+            id:
+              String(event.id ?? `${event.clock?.value}-${event.text}`),
+            time:
+              event.clock?.displayValue ?? "",
+            type:
+              event.scoringPlay
+                ? "goal"
+                : /red card/i.test(event.text)
+                  ? "red-card"
+                  : /yellow card/i.test(event.text)
+                    ? "yellow-card"
+                    : /penalty/i.test(event.text)
+                      ? "penalty"
+                      : "substitution",
+            text:
+              event.text,
+          }));
+
+      const lineups =
+        (summary?.rosters ?? []).map((roster) => ({
+          team:
+            roster.team?.displayName ?? "Team",
+          logo:
+            roster.team?.logo ?? null,
+          formation:
+            roster.formation ?? "",
+          starters:
+            (roster.roster ?? [])
+              .filter((player) => player.starter)
+              .sort(
+                (a, b) =>
+                  Number(a.formationPlace) -
+                  Number(b.formationPlace)
+              )
+              .map((player) => ({
+                id:
+                  String(player.athlete?.id ?? player.jersey ?? player.formationPlace),
+                name:
+                  player.athlete?.displayName ?? "Player",
+                shortName:
+                  player.athlete?.shortName ??
+                  player.athlete?.displayName ??
+                  "Player",
+                jersey:
+                  player.jersey ?? "",
+                position:
+                  player.position?.displayName ??
+                  player.position?.abbreviation ??
+                  "",
+                formationPlace:
+                  Number(player.formationPlace) || 0,
+                headshot:
+                  player.athlete?.headshot?.href ??
+                  player.headshot?.href ??
+                  null,
+              })),
+        }));
+
+      res.json({
+        eventId,
+        player: jude
+          ? {
+              name:
+                jude.athlete?.displayName ?? "Jude Bellingham",
+              position:
+                jude.position?.displayName ?? "",
+              starter:
+                Boolean(jude.starter),
+              stats:
+                playerStats,
+              events:
+                playerEvents,
+            }
+          : null,
+        teamStats,
+        matchEvents,
+        lineups,
+        heatmapAvailable: false,
+      });
+    } catch (error) {
+      console.error(
+        "Jude match stats error:",
+        error
+      );
+
+      res.status(500).json({
+        error:
+          "Failed to get Jude match stats",
+      });
+    }
+  }
+);
+
 /* =========================================================
    GAME LINKS
 
@@ -1616,6 +1800,28 @@ app.get(
   }
 );
 
+const VALID_REMINDER_HOURS = [
+  1,
+  12,
+  24,
+];
+
+function normalizeReminderHours(hours) {
+  if (!Array.isArray(hours)) {
+    return [1];
+  }
+
+  return [
+    ...new Set(
+      hours
+        .map(Number)
+        .filter((hour) =>
+          VALID_REMINDER_HOURS.includes(hour)
+        )
+    ),
+  ].sort((a, b) => a - b);
+}
+
 /* =========================================================
    SUBSCRIBE
 ========================================================= */
@@ -1627,8 +1833,12 @@ app.post(
     res
   ) => {
     try {
-      const subscription =
+      const requestBody =
         req.body;
+
+      const subscription =
+        requestBody?.subscription ??
+        requestBody;
 
       if (
         !subscription?.endpoint
@@ -1641,29 +1851,40 @@ app.post(
           });
       }
 
+      const subscriptionRecord = {
+        ...subscription,
+        reminderHours:
+          normalizeReminderHours(
+            requestBody?.reminderHours
+          ),
+      };
+
       const subscriptions =
         await readJSON(
           subscriptionsFile,
           []
         );
 
-      const exists =
-        subscriptions.some(
+      const existingIndex =
+        subscriptions.findIndex(
           (item) =>
             item.endpoint ===
             subscription.endpoint
         );
 
-      if (!exists) {
-        subscriptions.push(
-          subscription
-        );
-
-        await writeJSON(
-          subscriptionsFile,
-          subscriptions
-        );
+      if (existingIndex === -1) {
+        subscriptions.push(subscriptionRecord);
+      } else {
+        subscriptions[existingIndex] = {
+          ...subscriptions[existingIndex],
+          ...subscriptionRecord,
+        };
       }
+
+      await writeJSON(
+        subscriptionsFile,
+        subscriptions
+      );
 
       console.log(
         "🔔 PUSH SUBSCRIPTION SAVED"
@@ -1759,7 +1980,8 @@ app.post(
 ========================================================= */
 
 async function sendPushNotification(
-  payload
+  payload,
+  reminderHour = null
 ) {
   const subscriptions =
     await readJSON(
@@ -1777,9 +1999,28 @@ async function sendPushNotification(
   const remaining = [];
 
   for (
-    const subscription of
+    const savedSubscription of
       subscriptions
   ) {
+    const selectedReminderHours =
+      normalizeReminderHours(
+        savedSubscription.reminderHours
+      );
+
+    if (
+      reminderHour !== null &&
+      !selectedReminderHours.includes(reminderHour)
+    ) {
+      remaining.push(savedSubscription);
+      continue;
+    }
+
+    const subscription = {
+      ...savedSubscription,
+    };
+
+    delete subscription.reminderHours;
+
     try {
       await webPush.sendNotification(
         subscription,
@@ -1942,21 +2183,6 @@ async function checkMatchReminders() {
     const now =
       Date.now();
 
-    /*
-      Approx. 1 hour before kickoff.
-      Cron runs every minute.
-    */
-
-    const minimum =
-      55 *
-      60 *
-      1000;
-
-    const maximum =
-      65 *
-      60 *
-      1000;
-
     for (
       const match of matches
     ) {
@@ -1987,51 +2213,56 @@ async function checkMatchReminders() {
         kickoff -
         now;
 
-      if (
-        timeUntil <
-          minimum ||
-        timeUntil >
-          maximum
-      ) {
-        continue;
+      for (const reminderHour of VALID_REMINDER_HOURS) {
+        const targetTime =
+          reminderHour * 60 * 60 * 1000;
+
+        const tolerance =
+          5 * 60 * 1000;
+
+        if (
+          timeUntil < targetTime - tolerance ||
+          timeUntil > targetTime + tolerance
+        ) {
+          continue;
+        }
+
+        const reminderSuffix =
+          reminderHour === 1
+            ? "60"
+            : `${reminderHour}h`;
+
+        const reminderKey =
+          `${match.teamName}-${details.id}-${reminderSuffix}`;
+
+        if (reminders[reminderKey]) {
+          continue;
+        }
+
+        await sendPushNotification({
+          title:
+            `⚽ ${match.teamName} match in ${reminderHour} ${reminderHour === 1 ? "hour" : "hours"}`,
+
+          body:
+            `${match.teamName} vs ${details.opponent}.`,
+
+          tag:
+            reminderKey,
+
+          url:
+            "/",
+        }, reminderHour);
+
+        reminders[reminderKey] =
+          new Date().toISOString();
+
+        remindersChanged =
+          true;
+
+        console.log(
+          `🔔 SENT (${reminderHour}h): ${match.teamName} vs ${details.opponent}`
+        );
       }
-
-      const reminderKey =
-        `${match.teamName}-${details.id}-60`;
-
-      if (
-        reminders[
-          reminderKey
-        ]
-      ) {
-        continue;
-      }
-
-      await sendPushNotification({
-        title:
-          `⚽ ${match.teamName} match in 1 hour`,
-
-        body:
-          `${match.teamName} vs ${details.opponent}.`,
-
-        tag:
-          reminderKey,
-
-        url:
-          "/",
-      });
-
-      reminders[
-        reminderKey
-      ] =
-        new Date().toISOString();
-
-      remindersChanged =
-        true;
-
-      console.log(
-        `🔔 SENT: ${match.teamName} vs ${details.opponent}`
-      );
     }
 
     if (remindersChanged) {
@@ -2049,20 +2280,88 @@ async function checkMatchReminders() {
 }
 
 /* =========================================================
-   LIVE GOAL NOTIFICATIONS
+  LIVE MATCH NOTIFICATIONS
 
-   Every minute, checks if Real Madrid or England currently
-   have a match "in progress" on ESPN. If the score has moved
-   since the last check, that means a goal happened -> push
-   notification. The very first time a live match is seen,
-   the score is just saved as a baseline (no notification),
-   so kickoff itself doesn't trigger a false "goal" alert.
+  Every minute, checks ESPN's live scoreboard and commentary
+  for Real Madrid and England. Score changes trigger goal
+  alerts; new cards, penalties, and substitutions trigger
+  moment alerts. The first poll stores a baseline so old
+  events do not trigger notifications after a restart.
 ========================================================= */
 
 const LIVE_TRACKED_TEAMS = [
   { id: "86", name: "Real Madrid" },
   { id: "448", name: "England" },
 ];
+
+async function getLiveScoreboardEvents() {
+  const today =
+    new Date();
+
+  const yesterday =
+    new Date(today);
+
+  yesterday.setUTCDate(
+    yesterday.getUTCDate() - 1
+  );
+
+  const results =
+    await Promise.allSettled(
+      [yesterday, today].map((date) =>
+        fetchJSON(
+          `${ESPN.scoreboard}?dates=${formatESPNDate(date)}`
+        )
+      )
+    );
+
+  const eventMap =
+    new Map();
+
+  results.forEach((result) => {
+    if (result.status !== "fulfilled") {
+      return;
+    }
+
+    extractEvents(result.value).forEach((event) => {
+      eventMap.set(
+        String(event.id),
+        event
+      );
+    });
+  });
+
+  if (
+    results.every((result) => result.status !== "fulfilled")
+  ) {
+    throw new Error("ESPN live scoreboard unavailable");
+  }
+
+  return Array.from(eventMap.values());
+}
+
+function extractLiveMoments(summary) {
+  return (summary?.commentary ?? [])
+    .map((item) => item?.play)
+    .filter((play) => {
+      const type =
+        play?.type?.type ?? "";
+
+      return (
+        play?.id &&
+        /yellow-card|red-card|substitution|penalty/i.test(type)
+      );
+    })
+    .map((play) => ({
+      id:
+        String(play.id),
+      type:
+        play.type.type,
+      time:
+        play.clock?.displayValue ?? "",
+      text:
+        play.text ?? "",
+    }));
+}
 
 async function checkLiveGoals() {
   try {
@@ -2078,26 +2377,17 @@ async function checkLiveGoals() {
     const seenMatchIds =
       new Set();
 
+    const scoreboardEvents =
+      await getLiveScoreboardEvents();
+
     for (
       const trackedTeam of
         LIVE_TRACKED_TEAMS
     ) {
-      let events = [];
-
-      try {
-        events =
-          await getScoreboardFallback(
-            trackedTeam.id,
-            0,
-            1
-          );
-      } catch (error) {
-        console.error(
-          `Live score fetch failed for ${trackedTeam.name}:`,
-          error
+      const events =
+        scoreboardEvents.filter((event) =>
+          eventHasTeam(event, trackedTeam.id)
         );
-        continue;
-      }
 
       for (
         const event of events
@@ -2173,6 +2463,29 @@ async function checkLiveGoals() {
         const previous =
           liveScores[matchId];
 
+        let summary =
+          null;
+
+        try {
+          summary =
+            await fetchJSON(
+              `${ESPN.summary}?event=${encodeURIComponent(matchId)}`
+            );
+        } catch (error) {
+          console.error(
+            `Live moments fetch failed for ${matchId}:`,
+            error.statusCode || error.message
+          );
+        }
+
+        const liveMoments =
+          extractLiveMoments(summary);
+
+        const momentIds =
+          new Set(
+            liveMoments.map((moment) => moment.id)
+          );
+
         if (
           previous === undefined
         ) {
@@ -2182,42 +2495,95 @@ async function checkLiveGoals() {
             score: scoreString,
             homeName,
             awayName,
+            momentIds:
+              Array.from(momentIds),
           };
 
           scoresChanged = true;
           continue;
         }
 
+        const knownMomentIds =
+          new Set(
+            Array.isArray(previous.momentIds)
+              ? previous.momentIds
+              : momentIds
+          );
+
         if (
-          previous.score !==
-          scoreString
+          previous.score !== scoreString
         ) {
+          const [previousHomeScore, previousAwayScore] =
+            String(previous.score)
+              .split("-")
+              .map(Number);
+
+          const goalScored =
+            homeScore > previousHomeScore ||
+            awayScore > previousAwayScore;
+
           await sendPushNotification({
-            title:
-              "⚽ GOAL!",
+            title: goalScored
+              ? "⚽ GOAL!"
+              : "📊 SCORE UPDATE",
 
             body:
               `${homeName} ${homeScore}-${awayScore} ${awayName}`,
 
             tag:
-              `live-${matchId}`,
+              `live-${matchId}-score-${scoreString}`,
 
             url:
               "/",
           });
 
-          liveScores[matchId] = {
-            score: scoreString,
-            homeName,
-            awayName,
-          };
-
-          scoresChanged = true;
-
           console.log(
             `⚽ GOAL PUSHED: ${homeName} ${homeScore}-${awayScore} ${awayName}`
           );
         }
+
+        if (Array.isArray(previous.momentIds)) {
+          for (const moment of liveMoments) {
+            if (knownMomentIds.has(moment.id)) {
+              continue;
+            }
+
+            const title =
+              moment.type === "red-card"
+                ? "🟥 RED CARD"
+                : moment.type === "yellow-card"
+                  ? "🟨 YELLOW CARD"
+                  : /penalty/i.test(moment.type)
+                    ? "⚽ PENALTY"
+                    : "🔄 SUBSTITUTION";
+
+            await sendPushNotification({
+              title,
+              body:
+                `${homeName} ${homeScore}-${awayScore} ${awayName}. ${moment.time ? `${moment.time}: ` : ""}${moment.text}`,
+              tag:
+                `live-${matchId}-${moment.id}`,
+              url:
+                "/",
+            });
+
+            knownMomentIds.add(moment.id);
+
+            console.log(
+              `🔔 LIVE MOMENT: ${moment.type} ${homeName} vs ${awayName}`
+            );
+          }
+        }
+
+        liveScores[matchId] = {
+          score: scoreString,
+          homeName,
+          awayName,
+          momentIds:
+            Array.from(knownMomentIds),
+        };
+
+        scoresChanged = true;
       }
     }
 
@@ -2333,7 +2699,7 @@ app.listen(
     );
 
     console.log(
-      "🔔 1-hour reminders enabled"
+      "🔔 Match reminders enabled: 1, 12, and 24 hours"
     );
   }
 );

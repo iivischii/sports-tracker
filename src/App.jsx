@@ -21,8 +21,9 @@ import "./Collage.css";
   VITE_API_BASE in .env to the backend URL.
 */
 const API_BASE =
-  import.meta.env.VITE_API_BASE ??
-  "";
+  import.meta.env.DEV
+    ? ""
+    : import.meta.env.VITE_API_BASE ?? "";
 
 const RMA_TEAM_ID = "86";
 const ENGLAND_TEAM_ID = "448";
@@ -68,6 +69,12 @@ function App() {
   const [resultsLoading, setResultsLoading] =
     useState(false);
 
+  const [expandedStatsMatch, setExpandedStatsMatch] =
+    useState(null);
+
+  const [matchStatsByEvent, setMatchStatsByEvent] =
+    useState({});
+
   const [scheduleError, setScheduleError] =
     useState(false);
 
@@ -91,6 +98,97 @@ function App() {
         "belliGoalNotifications"
       ) === "true"
     );
+
+  const [reminderHours, setReminderHours] =
+    useState(() => {
+      try {
+        const saved =
+          JSON.parse(
+            localStorage.getItem("belliGoalReminderHours")
+          );
+
+        if (Array.isArray(saved)) {
+          return saved
+            .map(Number)
+            .filter((hour) => [1, 12, 24].includes(hour));
+        }
+      } catch {
+        // Use the existing one-hour reminder by default.
+      }
+
+      return [1, 12, 24];
+    });
+
+  const [notificationSettingsError, setNotificationSettingsError] =
+    useState("");
+
+  const initialReminderSyncStarted =
+    useRef(false);
+
+  useEffect(() => {
+    if (
+      !notificationsOn ||
+      initialReminderSyncStarted.current
+    ) {
+      return;
+    }
+
+    initialReminderSyncStarted.current = true;
+    let cancelled = false;
+
+    async function syncExistingSubscription() {
+      try {
+        const registration =
+          await navigator.serviceWorker.getRegistration();
+
+        const subscription =
+          await registration?.pushManager.getSubscription();
+
+        if (!subscription) {
+          return;
+        }
+
+        const response =
+          await fetch(
+            `${API_BASE}/api/notifications/subscribe`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                subscription: subscription.toJSON(),
+                reminderHours,
+              }),
+            }
+          );
+
+        if (!response.ok) {
+          throw new Error("Could not sync reminder preferences");
+        }
+      } catch (error) {
+        console.error(
+          "Initial reminder preference sync failed:",
+          error
+        );
+
+        if (!cancelled) {
+          setNotificationSettingsError(
+            "Could not sync these reminder times to your device."
+          );
+        }
+      }
+    }
+
+    syncExistingSubscription();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    notificationsOn,
+    reminderHours,
+  ]);
 
   /* =========================================================
      LINKS
@@ -1113,6 +1211,66 @@ function App() {
      ENABLE NOTIFICATIONS
   ========================================================= */
 
+  const updateReminderHours =
+    async (hour) => {
+      const nextHours =
+        reminderHours.includes(hour)
+          ? reminderHours.filter((selectedHour) => selectedHour !== hour)
+          : [...reminderHours, hour].sort((a, b) => a - b);
+
+      setReminderHours(nextHours);
+      localStorage.setItem(
+        "belliGoalReminderHours",
+        JSON.stringify(nextHours)
+      );
+
+      setNotificationSettingsError("");
+
+      if (!notificationsOn) {
+        return;
+      }
+
+      try {
+        const registration =
+          await navigator.serviceWorker.getRegistration();
+
+        const subscription =
+          await registration?.pushManager.getSubscription();
+
+        if (!subscription) {
+          throw new Error("No active push subscription");
+        }
+
+        const response =
+          await fetch(
+            `${API_BASE}/api/notifications/subscribe`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                subscription: subscription.toJSON(),
+                reminderHours: nextHours,
+              }),
+            }
+          );
+
+        if (!response.ok) {
+          throw new Error("Could not save reminder preferences");
+        }
+      } catch (error) {
+        console.error(
+          "Reminder preference save error:",
+          error
+        );
+
+        setNotificationSettingsError(
+          "Could not sync these reminder times to your device."
+        );
+      }
+    };
+
   const enableNotifications =
     async () => {
       try {
@@ -1212,9 +1370,11 @@ function App() {
               },
 
               body:
-                JSON.stringify(
-                  subscription
-                ),
+                JSON.stringify({
+                  subscription:
+                    subscription.toJSON(),
+                  reminderHours,
+                }),
             }
           );
 
@@ -1230,13 +1390,15 @@ function App() {
           true
         );
 
+        setNotificationSettingsError("");
+
         localStorage.setItem(
           "belliGoalNotifications",
           "true"
         );
 
         alert(
-          "🔔 Notifications are ON!\n\nYou'll get a reminder about 1 hour before a match."
+          `🔔 Notifications are ON!\n\nMatch reminders: ${reminderHours.length ? reminderHours.map((hour) => `${hour} hour${hour === 1 ? "" : "s"}`).join(", ") : "off"}.`
         );
       } catch (error) {
         console.error(
@@ -1454,6 +1616,63 @@ function App() {
         eventId
       ] ||
       "not_announced";
+
+  const loadMatchStats =
+    async (eventId) => {
+      setMatchStatsByEvent((current) => ({
+        ...current,
+        [eventId]: {
+          loading: true,
+        },
+      }));
+
+      try {
+        const response =
+          await fetch(
+            `${API_BASE}/api/bellingham/stats/${eventId}`
+          );
+
+        if (!response.ok) {
+          throw new Error("Could not load match stats");
+        }
+
+        const data =
+          await response.json();
+
+        setMatchStatsByEvent((current) => ({
+          ...current,
+          [eventId]: {
+            data,
+          },
+        }));
+      } catch (error) {
+        console.error(
+          "Could not load Jude match stats:",
+          error
+        );
+
+        setMatchStatsByEvent((current) => ({
+          ...current,
+          [eventId]: {
+            error: true,
+          },
+        }));
+      }
+    };
+
+  const toggleMatchStats =
+    (eventId) => {
+      if (expandedStatsMatch === eventId) {
+        setExpandedStatsMatch(null);
+        return;
+      }
+
+      setExpandedStatsMatch(eventId);
+
+      if (!matchStatsByEvent[eventId]) {
+        loadMatchStats(eventId);
+      }
+    };
 
   const formatJudeStatus =
     (status) => {
@@ -1786,7 +2005,7 @@ function App() {
           }
         >
           <div
-            className="popup"
+            className={`popup ${popup === "stats" ? "stats-popup" : ""}`}
             onClick={(e) =>
               e.stopPropagation()
             }
@@ -2593,6 +2812,14 @@ function App() {
                                     info
                                   );
 
+                                const matchReport =
+                                  matchStatsByEvent[
+                                    info.eventId
+                                  ];
+
+                                const matchStats =
+                                  matchReport?.data;
+
                                 return (
                                   <div
                                     key={
@@ -2735,6 +2962,115 @@ function App() {
                                         "-"}
                                     </div>
 
+                                    <button
+                                      type="button"
+                                      aria-expanded={
+                                        expandedStatsMatch ===
+                                        info.eventId
+                                      }
+                                      onClick={() =>
+                                        toggleMatchStats(
+                                          info.eventId
+                                        )
+                                      }
+                                      style={{
+                                        gridColumn:
+                                          "1 / -1",
+                                        display:
+                                          "flex",
+                                        alignItems:
+                                          "center",
+                                        justifyContent:
+                                          "center",
+                                        gap:
+                                          "8px",
+                                        width:
+                                          "100%",
+                                        padding:
+                                          "10px",
+                                        border:
+                                          "1px solid rgba(255,255,255,0.28)",
+                                        borderRadius:
+                                          "8px",
+                                        background:
+                                          "rgba(255,255,255,0.08)",
+                                        color:
+                                          "#ffffff",
+                                        fontFamily:
+                                          "Arial, Helvetica, sans-serif",
+                                        fontWeight:
+                                          800,
+                                        cursor:
+                                          "pointer",
+                                      }}
+                                    >
+                                      <BarChart3 size={16} />
+                                      {expandedStatsMatch ===
+                                      info.eventId
+                                        ? "HIDE MATCH REPORT"
+                                        : "JUDE + TEAM STATS"}
+                                    </button>
+
+                                    {expandedStatsMatch ===
+                                      info.eventId && (
+                                      <div
+                                        style={{
+                                          gridColumn:
+                                            "1 / -1",
+                                          padding:
+                                            "14px",
+                                          borderRadius:
+                                            "8px",
+                                          background:
+                                            "rgba(12, 20, 38, 0.42)",
+                                          color:
+                                            "#ffffff",
+                                          fontFamily:
+                                            "Arial, Helvetica, sans-serif",
+                                        }}
+                                      >
+                                        {matchReport?.loading && (
+                                          <div>LOADING MATCH REPORT...</div>
+                                        )}
+
+                                        {matchReport?.error && (
+                                          <div>
+                                            <span>Match stats are unavailable right now.</span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                loadMatchStats(
+                                                  info.eventId
+                                                )
+                                              }
+                                              style={{
+                                                marginLeft:
+                                                  "10px",
+                                                color:
+                                                  "#ffffff",
+                                                background:
+                                                  "transparent",
+                                                border:
+                                                  "0",
+                                                textDecoration:
+                                                  "underline",
+                                                cursor:
+                                                  "pointer",
+                                              }}
+                                            >
+                                              Retry
+                                            </button>
+                                          </div>
+                                        )}
+
+                                        {matchStats && (
+                                          <MatchStatsReport
+                                            report={matchStats}
+                                          />
+                                        )}
+                                      </div>
+                                    )}
+
                                   </div>
                                 );
                               }
@@ -2806,9 +3142,7 @@ function App() {
                       </strong>
 
                       <span>
-                        Get a phone notification 1
-                        hour before a Real Madrid or
-                        England match.
+                        Match reminders plus live goals, cards, penalties, and substitutions.
                       </span>
 
                     </div>
@@ -2829,6 +3163,40 @@ function App() {
                     </button>
 
                   </div>
+
+                  <div
+                    className="reminder-options"
+                    aria-label="Match reminder times"
+                  >
+                    {[
+                      { hour: 24, label: "24 hours" },
+                      { hour: 12, label: "12 hours" },
+                      { hour: 1, label: "1 hour" },
+                    ].map(({ hour, label }) => (
+                      <label
+                        className="reminder-option"
+                        key={hour}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={reminderHours.includes(hour)}
+                          onChange={() =>
+                            updateReminderHours(hour)
+                          }
+                        />
+                        <span>{label} before</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {notificationSettingsError && (
+                    <p
+                      className="reminder-preference-error"
+                      role="status"
+                    >
+                      {notificationSettingsError}
+                    </p>
+                  )}
 
                   {/* LINKS */}
 
@@ -2927,6 +3295,480 @@ function App() {
       )}
 
     </div>
+  );
+}
+
+function MatchStatsReport({ report }) {
+  const [activeView, setActiveView] =
+    useState("player");
+
+  const playerStats =
+    report.player?.stats ?? [];
+
+  const featuredNames = [
+    "Total Goals",
+    "Assists",
+    "Shots",
+    "Shots On Goal",
+  ];
+
+  const featuredStats =
+    featuredNames
+      .map((name) =>
+        playerStats.find((stat) => stat.name === name)
+      )
+      .filter(Boolean);
+
+  const otherPlayerStats =
+    playerStats.filter(
+      (stat) => !featuredNames.includes(stat.name)
+    );
+
+  const teams =
+    report.teamStats ?? [];
+
+  const homeStats =
+    teams[0]?.stats ?? [];
+
+  const awayStats =
+    teams[1]?.stats ?? [];
+
+  const events =
+    report.matchEvents ?? [];
+
+  const lineups =
+    report.lineups ?? [];
+
+  const getLineupRows =
+    (team) => {
+      const starters =
+        [...(team.starters ?? [])].sort(
+          (a, b) => a.formationPlace - b.formationPlace
+        );
+
+      if (starters.length === 0) {
+        return [];
+      }
+
+      const formationLines =
+        String(team.formation)
+          .split("-")
+          .map(Number)
+          .filter((count) => Number.isInteger(count) && count > 0);
+
+      if (
+        formationLines.length === 0 ||
+        formationLines.reduce((total, count) => total + count, 1) !== starters.length
+      ) {
+        return [starters];
+      }
+
+      const goalkeepers =
+        starters.filter((player) =>
+          /goalkeeper|keeper/i.test(player.position)
+        );
+
+      const defenders =
+        starters.filter((player) =>
+          /defender|back/i.test(player.position)
+        );
+
+      const forwards =
+        starters.filter((player) =>
+          /forward|striker/i.test(player.position)
+        );
+
+      const midfielders =
+        starters.filter((player) =>
+          !goalkeepers.includes(player) &&
+          !defenders.includes(player) &&
+          !forwards.includes(player)
+        );
+
+      const midfieldLineCounts =
+        formationLines.slice(1, -1);
+
+      if (
+        goalkeepers.length === 1 &&
+        defenders.length === formationLines[0] &&
+        forwards.length === formationLines.at(-1) &&
+        midfielders.length === midfieldLineCounts.reduce(
+          (total, count) => total + count,
+          0
+        )
+      ) {
+        const midfieldRows = [];
+
+        if (midfieldLineCounts.length === 1) {
+          midfieldRows.push(midfielders);
+        } else {
+          const attackingMidfielders =
+            midfielders.filter((player) =>
+              /attacking midfielder|wing/i.test(player.position)
+            );
+
+          const centralMidfielders =
+            midfielders.filter(
+              (player) => !attackingMidfielders.includes(player)
+            );
+
+          if (
+            centralMidfielders.length === midfieldLineCounts[0] &&
+            attackingMidfielders.length === midfieldLineCounts[1]
+          ) {
+            midfieldRows.push(
+              centralMidfielders,
+              attackingMidfielders
+            );
+          } else {
+            let offset = 0;
+
+            midfieldLineCounts.forEach((count) => {
+              midfieldRows.push(
+                midfielders.slice(offset, offset + count)
+              );
+              offset += count;
+            });
+          }
+        }
+
+        return [
+          goalkeepers,
+          defenders,
+          ...midfieldRows,
+          forwards,
+        ];
+      }
+
+      const rows = [starters.slice(0, 1)];
+      let offset = 1;
+
+      formationLines.forEach((count) => {
+        rows.push(starters.slice(offset, offset + count));
+        offset += count;
+      });
+
+      return rows;
+    };
+
+  const renderLineup =
+    (team, teamIndex) => {
+      const rows =
+        getLineupRows(team);
+
+      const visualRows =
+        teamIndex === 1
+          ? [...rows].reverse()
+          : rows;
+
+      return (
+        <div
+          className={`lineup-team-half ${teamIndex === 1 ? "lineup-team-bottom" : "lineup-team-top"}`}
+          key={team.name}
+        >
+          <div className="lineup-team-heading">
+            <div>
+              <strong>{team.name}</strong>
+              <span>STARTING XI</span>
+            </div>
+            <b>{team.formation || "LINEUP"}</b>
+          </div>
+          <div className="lineup-rows">
+            {visualRows.map((row, rowIndex) => (
+              <div
+                className="lineup-player-row"
+                key={`${team.name}-${rowIndex}`}
+                style={{ "--player-count": row.length }}
+              >
+                {row.map((player) => (
+                  <div
+                    className="lineup-player"
+                    key={player.id}
+                    title={`${player.name}${player.position ? ` · ${player.position}` : ""}`}
+                  >
+                    <div className="lineup-player-avatar">
+                      <span>{player.jersey || player.formationPlace}</span>
+                      {player.headshot && (
+                        <img
+                          src={player.headshot}
+                          alt=""
+                          loading="lazy"
+                        />
+                      )}
+                    </div>
+                    <strong>{player.shortName}</strong>
+                    <span>{player.position}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+  const toNumber =
+    (value) => {
+      const number =
+        Number.parseFloat(String(value).replace("%", ""));
+
+      return Number.isFinite(number)
+        ? Math.max(0, number)
+        : 0;
+    };
+
+  return (
+    <section className="match-report">
+      <header className="match-report-heading">
+        <div>
+          <p className="match-report-eyebrow">THE MATCH FILE</p>
+          <h3>Jude + match stats</h3>
+          <p className="match-report-subtitle">
+            ESPN match data, styled for a closer look.
+          </p>
+        </div>
+        <span className="match-report-source">ESPN DATA</span>
+      </header>
+
+      <div
+        className="match-report-tabs"
+        role="tablist"
+        aria-label="Match report views"
+      >
+        {[
+          ["player", "JUDE"],
+          ["teams", "TEAM STATS"],
+          ["lineups", "LINEUPS"],
+          ["flow", "MATCH FLOW"],
+        ].map(([view, label]) => (
+          <button
+            key={view}
+            type="button"
+            role="tab"
+            aria-selected={activeView === view}
+            className={activeView === view ? "is-active" : ""}
+            onClick={() => setActiveView(view)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeView === "player" && (
+        <div role="tabpanel" className="match-report-panel">
+          <div className="player-report-intro">
+            <div>
+              <p className="match-report-eyebrow">PLAYER OF THE MATCH FILE</p>
+              <h4>Jude Bellingham</h4>
+              <span>
+                {report.player
+                  ? `${report.player.position || "Player"} · ${report.player.starter ? "STARTED" : "IN SQUAD"}`
+                  : "No player report available for this match."}
+              </span>
+            </div>
+            <span className="player-report-mark" aria-hidden="true">JB</span>
+          </div>
+
+          {featuredStats.length > 0 ? (
+            <div className="player-feature-grid">
+              {featuredStats.map((stat, index) => (
+                <div
+                  className={`player-feature player-feature-${index + 1}`}
+                  key={stat.name}
+                  title={stat.description}
+                >
+                  <span>{stat.name}</span>
+                  <strong>{stat.value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="match-report-empty">
+              ESPN did not provide Jude&apos;s player statistics for this fixture.
+            </p>
+          )}
+
+          {otherPlayerStats.length > 0 && (
+            <div className="player-other-stats">
+              <div className="match-report-section-heading">
+                <h5>Full player line</h5>
+                <span>{playerStats.length} metrics</span>
+              </div>
+              <div className="player-stat-list">
+                {otherPlayerStats.map((stat) => (
+                  <div
+                    className="player-stat-row"
+                    key={stat.name}
+                    title={stat.description}
+                  >
+                    <span>{stat.name}</span>
+                    <strong>{stat.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeView === "teams" && (
+        <div role="tabpanel" className="match-report-panel">
+          {teams.length === 2 ? (
+            <>
+              <div className="team-stat-legend">
+                <span><i className="team-stat-swatch home" />{teams[0].name}</span>
+                <span><i className="team-stat-swatch away" />{teams[1].name}</span>
+              </div>
+              <div className="team-stat-list">
+                {homeStats.map((stat) => {
+                  const other =
+                    awayStats.find((item) => item.name === stat.name);
+                  const homeValue = toNumber(stat.value);
+                  const awayValue = toNumber(other?.value);
+                  const maxValue = Math.max(homeValue, awayValue, 1);
+
+                  return (
+                    <div className="team-stat-row" key={stat.name}>
+                      <div className="team-stat-labels">
+                        <strong>{stat.name}</strong>
+                        <span>
+                          <b>{stat.value}</b>
+                          <span aria-hidden="true"> / </span>
+                          <b>{other?.value ?? "-"}</b>
+                        </span>
+                      </div>
+                      <div className="team-stat-bars" aria-hidden="true">
+                        <span className="team-stat-bar home">
+                          <i style={{ width: `${(homeValue / maxValue) * 100}%` }} />
+                        </span>
+                        <span className="team-stat-bar away">
+                          <i style={{ width: `${(awayValue / maxValue) * 100}%` }} />
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <p className="match-report-empty">
+              Team comparison data is unavailable for this fixture.
+            </p>
+          )}
+        </div>
+      )}
+
+      {activeView === "lineups" && (
+        <div role="tabpanel" className="match-report-panel lineups-panel">
+          {lineups.length === 2 && lineups.every((team) => team.starters.length > 0) ? (
+            <div className="lineup-pitch">
+              {renderLineup(lineups[0], 0)}
+              <div className="lineup-midfield" aria-hidden="true">
+                <span />
+              </div>
+              {renderLineup(lineups[1], 1)}
+            </div>
+          ) : (
+            <p className="match-report-empty">
+              ESPN hasn&apos;t published the starting lineups for this match.
+            </p>
+          )}
+        </div>
+      )}
+
+      {activeView === "flow" && (
+        <div role="tabpanel" className="match-report-panel flow-panel">
+          <div className="match-report-section-heading">
+            <h5>Match flow</h5>
+            <span>90 minutes · {events.length} moments</span>
+          </div>
+          {events.length > 0 ? (
+            <>
+              <div className="match-flow-track" aria-label="Match event timeline">
+                {events.map((event, index) => {
+                  const minute =
+                    Number.parseInt(event.time, 10);
+                  const position =
+                    Number.isFinite(minute)
+                      ? Math.min(minute, 90) / 90 * 100
+                      : 0;
+                  const markerPosition =
+                    Math.max(
+                      0,
+                      Math.min(
+                        100,
+                        position + (index % 2 === 0 ? -0.6 : 0.6)
+                      )
+                    );
+
+                  return (
+                    <span
+                      className={`match-flow-marker match-flow-${event.type}`}
+                      key={event.id}
+                      style={{
+                        left: `${markerPosition}%`,
+                      }}
+                      title={`${event.time || "Match"} · ${event.text}`}
+                      aria-label={`${event.time || "Match"}: ${event.text}`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="match-flow-axis">
+                <span>0&apos; · KICKOFF</span>
+                <span>45&apos; · HALF</span>
+                <span>90&apos; · FULL TIME</span>
+              </div>
+              <div className="match-flow-legend">
+                <span><i className="flow-dot flow-goal" /> GOAL</span>
+                <span><i className="flow-dot flow-card" /> CARD</span>
+                <span><i className="flow-dot flow-sub" /> SUBSTITUTION</span>
+              </div>
+              <div className="match-flow-counts">
+                <div>
+                  <strong>{events.filter((event) => event.type === "goal").length}</strong>
+                  <span>GOALS</span>
+                </div>
+                <div>
+                  <strong>
+                    {events.filter((event) =>
+                      event.type === "yellow-card" || event.type === "red-card"
+                    ).length}
+                  </strong>
+                  <span>CARDS</span>
+                </div>
+                <div>
+                  <strong>{events.filter((event) => event.type === "substitution").length}</strong>
+                  <span>SUBS</span>
+                </div>
+              </div>
+              <p className="match-flow-note">
+                Each marker represents a recorded ESPN match event.
+              </p>
+              <div className="match-flow-events">
+                <div className="match-report-section-heading">
+                  <h5>Play-by-play</h5>
+                  <span>{events.length} recorded</span>
+                </div>
+                <ol className="match-event-timeline">
+                  {events.map((event) => (
+                    <li className={`match-event match-event-${event.type}`} key={event.id}>
+                      <span className="match-event-time">{event.time || "LIVE"}</span>
+                      <span className="match-event-dot" aria-hidden="true" />
+                      <span className="match-event-text">{event.text}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </>
+          ) : (
+            <p className="match-report-empty">
+              ESPN has no timeline events recorded for this fixture.
+            </p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
